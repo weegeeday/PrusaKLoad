@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Syntax check Python modules
+        run: python -m py_compile klippy/extras/prusa_kload.py klippy/extras/prusa_kload_material.py
+
+      - name: Syntax check installer script
+        run: bash -n install.sh
+
+      - name: Install pytest
+        run: python -m pip install --upgrade pip pytest
+
+      - name: Run unit tests
+        run: pytest -v
+
+  klipper-simulator:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc libc6-dev
+
+      - name: Install Klipper Python dependencies
+        run: python -m pip install --upgrade pip cffi greenlet jinja2 pyserial
+
+      - name: Clone latest upstream Klipper
+        run: git clone --depth 1 https://github.com/Klipper3d/klipper.git /tmp/klipper-sim
+
+      - name: Build Klipper host simulator dictionary
+        run: |
+          cd /tmp/klipper-sim
+          cp test/configs/hostsimulator.config .config
+          make olddefconfig
+          make out/klipper.dict
+
+      - name: Install PrusaKLoad into Klipper
+        run: bash install.sh -k /tmp/klipper-sim
+
+      - name: Run real Klipper simulator integration suite
+        env:
+          KLIPPER_DIR: /tmp/klipper-sim
+        run: python3 tests/sim/run_klipper_sim.py
+
+      - name: Verify uninstall removes symlinks
+        run: |
+          bash install.sh -k /tmp/klipper-sim --uninstall
+          test ! -e /tmp/klipper-sim/klippy/extras/prusa_kload.py
+          test ! -e /tmp/klipper-sim/klippy/extras/prusa_kload_material.py
