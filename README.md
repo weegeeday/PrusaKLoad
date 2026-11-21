@@ -1,4 +1,13 @@
-# PrusaKLoad
+
+<p align="center">
+  <img src="assets/Logo.png" alt="PrusaKLoad" width="460">
+</p>
+
+<p align="center">
+  <a href="https://github.com/weegeeday/PrusaKLoad/actions/workflows/ci.yml">
+    <img src="https://github.com/weegeeday/PrusaKLoad/actions/workflows/ci.yml/badge.svg" alt="CI">
+  </a>
+</p>
 
 PrusaKLoad is a Klipper plugin that brings Prusa MK4S-style filament handling to any Klipper printer with a filament sensor. Push filament into the sensor and the printer asks what material you inserted, heats the hotend, loads and purges, and asks if the color is clear. It saves the loaded material across restarts and checks incoming G-code files before a print starts so you do not accidentally print PETG on a PLA spool.
 
