@@ -71,7 +71,8 @@ jobs:
           cd /tmp/klipper-sim
           cp test/configs/hostsimulator.config .config
           make olddefconfig
-          make out/klipper.dict
+          make -j"$(nproc)"
+          test -f /tmp/klipper-sim/out/klipper.dict
 
       - name: Install PrusaKLoad into Klipper
         run: bash install.sh -k /tmp/klipper-sim

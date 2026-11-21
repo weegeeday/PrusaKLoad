@@ -12,7 +12,8 @@ RUN git clone --depth 1 https://github.com/Klipper3d/klipper.git /opt/klipper \
     && cd /opt/klipper \
     && cp test/configs/hostsimulator.config .config \
     && make olddefconfig \
-    && make out/klipper.dict
+    && make -j"$(nproc)" \
+    && test -f /opt/klipper/out/klipper.dict
 
 WORKDIR /workspace
 COPY . /workspace
