@@ -716,12 +716,15 @@ class PrusaKLoad:
 
         self._prompt_line("action:prompt_begin %s" % (title,))
         self._prompt_line("action:prompt_text %s" % (text,))
-        self._prompt_line("action:prompt_button_group_start")
-        for name in self.materials.list_names():
-            self._prompt_line(
-                "action:prompt_button %s|%s%s|primary" % (name, cmd_prefix, name)
-            )
-        self._prompt_line("action:prompt_button_group_end")
+        names = self.materials.list_names()
+        row_size = 4
+        for idx in range(0, len(names), row_size):
+            self._prompt_line("action:prompt_button_group_start")
+            for name in names[idx : idx + row_size]:
+                self._prompt_line(
+                    "action:prompt_button %s|%s%s|primary" % (name, cmd_prefix, name)
+                )
+            self._prompt_line("action:prompt_button_group_end")
         if mode == "set":
             self._prompt_line(
                 "action:prompt_footer_button Clear (None)|PRUSA_KLOAD_CLEAR_FILAMENT|secondary"
@@ -743,15 +746,17 @@ class PrusaKLoad:
             "action:prompt_text Extruded %s. Is the purged color clear and clean?"
             % (material_name,)
         )
+        self._prompt_line("action:prompt_button_group_start")
         self._prompt_line(
-            "action:prompt_footer_button Yes (Color Clear)|PRUSA_KLOAD_CONFIRM_PURGE ACTION=YES|primary"
+            "action:prompt_button Yes|PRUSA_KLOAD_CONFIRM_PURGE ACTION=YES|primary"
         )
         self._prompt_line(
-            "action:prompt_footer_button Purge More|PRUSA_KLOAD_CONFIRM_PURGE ACTION=PURGE_MORE|secondary"
+            "action:prompt_button Purge More|PRUSA_KLOAD_CONFIRM_PURGE ACTION=PURGE_MORE|secondary"
         )
         self._prompt_line(
-            "action:prompt_footer_button Retry|PRUSA_KLOAD_CONFIRM_PURGE ACTION=RETRY|secondary"
+            "action:prompt_button Retry|PRUSA_KLOAD_CONFIRM_PURGE ACTION=RETRY|secondary"
         )
+        self._prompt_line("action:prompt_button_group_end")
         self._prompt_line(
             "action:prompt_footer_button Cancel|PRUSA_KLOAD_CANCEL|warning"
         )
@@ -768,15 +773,17 @@ class PrusaKLoad:
             "action:prompt_text G-code requests: %s | Currently loaded: %s"
             % (requested, loaded_str)
         )
+        self._prompt_line("action:prompt_button_group_start")
         self._prompt_line(
-            "action:prompt_footer_button Swap Filament|PRUSA_KLOAD_MISMATCH_ACTION ACTION=SWAP|primary"
+            "action:prompt_button Swap|PRUSA_KLOAD_MISMATCH_ACTION ACTION=SWAP|primary"
         )
         self._prompt_line(
-            "action:prompt_footer_button Force Continue|PRUSA_KLOAD_MISMATCH_ACTION ACTION=FORCE|warning"
+            "action:prompt_button Force|PRUSA_KLOAD_MISMATCH_ACTION ACTION=FORCE|warning"
         )
         self._prompt_line(
-            "action:prompt_footer_button Cancel Print|PRUSA_KLOAD_MISMATCH_ACTION ACTION=CANCEL|error"
+            "action:prompt_button Cancel|PRUSA_KLOAD_MISMATCH_ACTION ACTION=CANCEL|error"
         )
+        self._prompt_line("action:prompt_button_group_end")
         self._prompt_line("action:prompt_show")
         self._prompt_open = True
         self._start_prompt_timeout()

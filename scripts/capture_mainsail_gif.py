@@ -172,13 +172,6 @@ def capture_mainsail_gif(
             page.goto(base_url, wait_until="networkidle", timeout=30000)
             # Wait for Mainsail dashboard cards to render
             page.wait_for_selector("text=Toolhead", timeout=20000)
-            # Ensure Vuetify prompt dialogs have enough horizontal room for 3-4 footer buttons without clipping
-            page.add_style_tag(
-                content=(
-                    ".v-dialog { max-width: 560px !important; } "
-                    ".v-dialog .v-card__actions { flex-wrap: wrap !important; row-gap: 4px !important; }"
-                )
-            )
             time.sleep(0.8)
 
             # 1. Idle Mainsail dashboard
@@ -212,7 +205,7 @@ def capture_mainsail_gif(
             time.sleep(0.5)
             snap(1800)
 
-            yes_btn = page.locator(".v-dialog button", has_text="Yes (Color Clear)").first
+            yes_btn = page.locator(".v-dialog button", has_text="Yes").first
             yes_btn.hover()
             time.sleep(0.25)
             snap(450)
@@ -226,7 +219,7 @@ def capture_mainsail_gif(
             time.sleep(0.5)
             snap(2100)
 
-            swap_btn = page.locator(".v-dialog button", has_text="Swap Filament").first
+            swap_btn = page.locator(".v-dialog button", has_text="Swap").first
             swap_btn.hover()
             time.sleep(0.25)
             snap(550)
