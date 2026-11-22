@@ -634,6 +634,42 @@ def test_scenario_8_live_menu_jinja2_evaluation():
     print("PASS: Scenario 8 — Real Klipper MenuManager Jinja2 evaluation across all states")
 
 
+def test_scenario_9_override_existing_load_unload_macros():
+    existing_macros = (
+        "[filament_switch_sensor fsensor]\n"
+        "switch_pin: ^!30\n\n"
+        "[gcode_macro LOAD_FILAMENT]\n"
+        "gcode:\n"
+        "    M117 Legacy Load\n\n"
+        "[gcode_macro UNLOAD_FILAMENT]\n"
+        "gcode:\n"
+        "    M117 Legacy Unload\n"
+    )
+    with tempfile.TemporaryDirectory() as tmpdir:
+        proc, log_text, state_data, _ = run_klippy_batch(
+            tmpdir,
+            [
+                "LOAD_FILAMENT MATERIAL=PLA",
+                "PRUSA_KLOAD_CONFIRM_PURGE ACTION=YES",
+            ],
+            sensor_block_override=existing_macros,
+        )
+        assert_clean_run("override_load_macro", proc, log_text)
+        assert state_data is not None and state_data["loaded_filament"] == "PLA", state_data
+
+        proc2, log_text2, state_data2, _ = run_klippy_batch(
+            tmpdir,
+            [
+                "UNLOAD_FILAMENT",
+                "PRUSA_KLOAD_UNLOAD CONFIRM=1",
+            ],
+            sensor_block_override=existing_macros,
+        )
+        assert_clean_run("override_unload_macro", proc2, log_text2)
+        assert state_data2 is not None and state_data2["loaded_filament"] is None, state_data2
+    print("PASS: Scenario 9 — Real Klipper cleanly overrides existing LOAD_FILAMENT / UNLOAD_FILAMENT macros")
+
+
 def main():
     if not os.path.isfile(KLIPPY_PY):
         print(f"ERROR: klippy.py not found at {KLIPPY_PY}", file=sys.stderr)
@@ -650,6 +686,7 @@ def main():
     test_scenario_6_invalid_config_rejection()
     test_scenario_7_live_reactor_sensor_debounce_isolation_and_cancel()
     test_scenario_8_live_menu_jinja2_evaluation()
+    test_scenario_9_override_existing_load_unload_macros()
     print("\nALL REAL KLIPPER SIMULATOR INTEGRATION TESTS PASSED!")
 
 

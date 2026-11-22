@@ -1,8 +1,8 @@
 # PrusaKLoad - Prusa MK4S-style filament loading, tracking, and mismatch checks
 #
-# Copyright (C) 2026 PrusaKLoad contributors
+# Copyright (c) 2026 weegeeday
 #
-# This file may be distributed under the terms of the GNU GPLv3 license.
+# This file may be distributed under the terms of the MIT license.
 
 from datetime import datetime, timezone
 import json
@@ -323,6 +323,7 @@ class PrusaKLoad:
         self.auto_load_on_insert = config.getboolean("auto_load_on_insert", True)
         self.clear_on_remove = config.getboolean("clear_on_remove", True)
         self.check_on_print_start = config.getboolean("check_on_print_start", True)
+        self.override_load_unload = config.getboolean("override_load_unload", True)
 
         state_file = config.get(
             "state_file", "~/printer_data/config/.prusa_kload_state.json"
@@ -518,6 +519,10 @@ class PrusaKLoad:
 
             runout_helper.note_filament_present = wrapped_note_filament_present
 
+    def _register_override(self, cmd_name, handler, desc):
+        self.gcode.register_command(cmd_name, None)
+        self.gcode.register_command(cmd_name, handler, desc=desc)
+
     def _handle_ready(self):
         if self._orig_sdcard_print_file is None:
             orig = self.gcode.register_command("SDCARD_PRINT_FILE", None)
@@ -528,6 +533,17 @@ class PrusaKLoad:
                     self.cmd_SDCARD_PRINT_FILE,
                     desc="Start printing a file from SD card (with PrusaKLoad check)",
                 )
+        if self.override_load_unload:
+            self._register_override(
+                "LOAD_FILAMENT",
+                self.cmd_LOAD,
+                "Load filament (PrusaKLoad MK4S flow)",
+            )
+            self._register_override(
+                "UNLOAD_FILAMENT",
+                self.cmd_UNLOAD,
+                "Unload filament (PrusaKLoad MK4S flow)",
+            )
 
     def _button_callback(self, eventtime, state):
         self._on_raw_sensor_change(eventtime, bool(state))

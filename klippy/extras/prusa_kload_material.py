@@ -1,8 +1,8 @@
 # PrusaKLoad material section loader ([prusa_kload_material <NAME>])
 #
-# Copyright (C) 2026 PrusaKLoad contributors
+# Copyright (c) 2026 weegeeday
 #
-# This file may be distributed under the terms of the GNU GPLv3 license.
+# This file may be distributed under the terms of the MIT license.
 
 
 def load_config_prefix(config):

@@ -244,3 +244,38 @@ def test_cancel_cools_down_from_hot_states_including_swap_wait_insert(klipper_en
     assert kload.state == prusa_kload.STATE_IDLE
     assert "M104 S0" in printer.gcode.scripts
 
+
+def test_override_load_unload_replaces_existing_macros_and_respects_toggle(klipper_env):
+    # Default (override_load_unload: True) overrides pre-existing LOAD_FILAMENT / UNLOAD_FILAMENT
+    printer, kload, _, _, _ = klipper_env(connect=False)
+    legacy_calls = []
+    printer.gcode.register_command("LOAD_FILAMENT", lambda gcmd: legacy_calls.append("load"))
+    printer.gcode.register_command("UNLOAD_FILAMENT", lambda gcmd: legacy_calls.append("unload"))
+    printer.send_event("klippy:connect")
+    printer.send_event("klippy:ready")
+
+    printer.gcode.run_command("LOAD_FILAMENT", MATERIAL="PLA")
+    assert kload.state == prusa_kload.STATE_CONFIRM_PURGE
+    assert legacy_calls == []
+    printer.gcode.run_command("PRUSA_KLOAD_CONFIRM_PURGE", ACTION="YES")
+    assert kload.loaded_filament == "PLA"
+
+    printer.gcode.run_command("UNLOAD_FILAMENT")
+    assert kload.loaded_filament is None
+    assert legacy_calls == []
+
+    # When override_load_unload: False, existing user macros remain intact
+    printer2, kload2, _, _, _ = klipper_env(
+        options={"override_load_unload": "False"}, connect=False
+    )
+    user_calls = []
+    printer2.gcode.register_command("LOAD_FILAMENT", lambda gcmd: user_calls.append("load"))
+    printer2.gcode.register_command("UNLOAD_FILAMENT", lambda gcmd: user_calls.append("unload"))
+    printer2.send_event("klippy:connect")
+    printer2.send_event("klippy:ready")
+
+    printer2.gcode.run_command("LOAD_FILAMENT", MATERIAL="PLA")
+    printer2.gcode.run_command("UNLOAD_FILAMENT")
+    assert user_calls == ["load", "unload"]
+    assert kload2.state == prusa_kload.STATE_IDLE
+
