@@ -324,6 +324,7 @@ class PrusaKLoad:
         self.clear_on_remove = config.getboolean("clear_on_remove", True)
         self.check_on_print_start = config.getboolean("check_on_print_start", True)
         self.override_load_unload = config.getboolean("override_load_unload", True)
+        self.happy_hare_compat = config.getboolean("happy_hare_compat", True)
 
         state_file = config.get(
             "state_file", "~/printer_data/config/.prusa_kload_state.json"
@@ -351,6 +352,7 @@ class PrusaKLoad:
         self._busy_motion = False
         self._bypass_print_check = False
         self._orig_sdcard_print_file = None
+        self._mmu = None
 
         if self.switch_pin is not None:
             buttons = self.printer.load_object(config, "buttons")
@@ -485,6 +487,8 @@ class PrusaKLoad:
         )
 
     def _handle_connect(self):
+        if self.happy_hare_compat:
+            self._mmu = self.printer.lookup_object("mmu", None)
         if self.filament_sensor_name is not None:
             sensor = self._lookup_filament_sensor()
             runout_helper = getattr(sensor, "runout_helper", None)
@@ -519,11 +523,48 @@ class PrusaKLoad:
 
             runout_helper.note_filament_present = wrapped_note_filament_present
 
+    def _is_happy_hare_active(self, eventtime=None):
+        if self._mmu is None:
+            return False
+        et = self.reactor.monotonic() if eventtime is None else eventtime
+        status = self._mmu.get_status(et) if hasattr(self._mmu, "get_status") else {}
+        if not status.get("enabled", True):
+            return False
+        if status.get("gate", -1) == -2:
+            return False
+        return True
+
+    def _warn_happy_hare_active(self, gcmd=None):
+        msg = (
+            "PrusaKLoad: Happy Hare (MMU) is active; switch to bypass mode "
+            "or disable MMU to use PrusaKLoad."
+        )
+        if gcmd is not None:
+            gcmd.respond_info(msg)
+        else:
+            self.gcode.respond_info(msg)
+
     def _register_override(self, cmd_name, handler, desc):
-        self.gcode.register_command(cmd_name, None)
-        self.gcode.register_command(cmd_name, handler, desc=desc)
+        orig = self.gcode.register_command(cmd_name, None)
+
+        def wrapped(gcmd):
+            if self._is_happy_hare_active():
+                if orig is not None:
+                    return orig(gcmd)
+                self._warn_happy_hare_active(gcmd)
+                return None
+            return handler(gcmd)
+
+        self.gcode.register_command(cmd_name, wrapped, desc=desc)
 
     def _handle_ready(self):
+        if self._mmu is not None:
+            msg = (
+                "PrusaKLoad: Happy Hare (MMU) detected; standing down while MMU "
+                "is active (will activate automatically in bypass or disabled mode)."
+            )
+            logging.warning(msg)
+            self.gcode.respond_info(msg)
         if self._orig_sdcard_print_file is None:
             orig = self.gcode.register_command("SDCARD_PRINT_FILE", None)
             if orig is not None:
@@ -595,6 +636,9 @@ class PrusaKLoad:
             return
         self._debounced_filament_present = present
 
+        if self._is_happy_hare_active(eventtime):
+            return
+
         print_state = self._get_print_state(eventtime)
         if print_state == "printing":
             return
@@ -644,6 +688,8 @@ class PrusaKLoad:
             "pending_filename": pending_fn,
             "filament_present": self._is_filament_present(),
             "materials": self.materials.list_names(),
+            "happy_hare_detected": self._mmu is not None,
+            "happy_hare_active": self._is_happy_hare_active(eventtime),
         }
 
     def _set_loaded_filament(self, material):
@@ -1154,7 +1200,11 @@ class PrusaKLoad:
     # ------------------------------------------------------------------
 
     def cmd_SDCARD_PRINT_FILE(self, gcmd):
-        if self._bypass_print_check or not self.check_on_print_start:
+        if (
+            self._bypass_print_check
+            or not self.check_on_print_start
+            or self._is_happy_hare_active()
+        ):
             return self._orig_sdcard_print_file(gcmd)
 
         filename = gcmd.get("FILENAME", "")
@@ -1183,14 +1233,20 @@ class PrusaKLoad:
 
     def cmd_STATUS(self, gcmd):
         status = self.get_status(self.reactor.monotonic())
+        hh_state = (
+            "active"
+            if status["happy_hare_active"]
+            else ("bypass" if status["happy_hare_detected"] else "none")
+        )
         gcmd.respond_info(
-            "PrusaKLoad state=%s loaded=%s target=%s requested=%s sensor=%s"
+            "PrusaKLoad state=%s loaded=%s target=%s requested=%s sensor=%s happy_hare=%s"
             % (
                 status["state"],
                 status["loaded_filament"],
                 status["target_filament"],
                 status["requested_filament"],
                 status["filament_present"],
+                hh_state,
             )
         )
 
@@ -1200,6 +1256,9 @@ class PrusaKLoad:
         )
 
     def cmd_SET_FILAMENT(self, gcmd):
+        if self._is_happy_hare_active():
+            self._warn_happy_hare_active(gcmd)
+            return
         raw = gcmd.get("MATERIAL", None)
         if raw is None or not raw.strip():
             self._open_material_picker(mode="set", from_command=True)
@@ -1215,6 +1274,9 @@ class PrusaKLoad:
         self._set_lcd_status("Loaded: %s" % (canonical,), from_command=True)
 
     def cmd_CLEAR_FILAMENT(self, gcmd):
+        if self._is_happy_hare_active():
+            self._warn_happy_hare_active(gcmd)
+            return
         self._close_prompt()
         self._set_loaded_filament(None)
         if self.state == STATE_SELECT_MATERIAL and self._select_mode == "set":
@@ -1234,6 +1296,9 @@ class PrusaKLoad:
         gcmd.respond_info("\n".join(lines))
 
     def cmd_LOAD(self, gcmd):
+        if self._is_happy_hare_active():
+            self._warn_happy_hare_active(gcmd)
+            return
         raw_mat = gcmd.get("MATERIAL", None)
         if self.state == STATE_SELECT_MATERIAL and self._select_mode == "unload":
             if raw_mat and raw_mat.strip():
@@ -1251,6 +1316,9 @@ class PrusaKLoad:
         self._execute_load_sequence(raw_mat, from_command=True)
 
     def cmd_UNLOAD(self, gcmd):
+        if self._is_happy_hare_active():
+            self._warn_happy_hare_active(gcmd)
+            return
         confirm = gcmd.get_int("CONFIRM", 0)
         if confirm:
             if self.state == STATE_WAIT_REMOVE:
@@ -1264,6 +1332,9 @@ class PrusaKLoad:
         )
 
     def cmd_SWAP(self, gcmd):
+        if self._is_happy_hare_active():
+            self._warn_happy_hare_active(gcmd)
+            return
         raw_mat = gcmd.get("MATERIAL", None)
         target = self.materials.resolve_name(raw_mat) if raw_mat else None
         if raw_mat and self.materials.get(target) is None:
@@ -1285,6 +1356,9 @@ class PrusaKLoad:
                 self._open_material_picker(mode="load", from_command=True)
 
     def cmd_CONFIRM_PURGE(self, gcmd):
+        if self._is_happy_hare_active():
+            self._warn_happy_hare_active(gcmd)
+            return
         if self.state != STATE_CONFIRM_PURGE:
             raise self.gcode.error(
                 "PrusaKLoad: not awaiting purge confirmation (state=%s)"
@@ -1333,6 +1407,9 @@ class PrusaKLoad:
             )
 
     def cmd_MISMATCH_ACTION(self, gcmd):
+        if self._is_happy_hare_active():
+            self._warn_happy_hare_active(gcmd)
+            return
         if self.state != STATE_MISMATCH_PROMPT:
             raise self.gcode.error(
                 "PrusaKLoad: no active mismatch prompt (state=%s)" % (self.state,)
@@ -1380,6 +1457,9 @@ class PrusaKLoad:
             )
 
     def cmd_CHECK(self, gcmd):
+        if self._is_happy_hare_active():
+            self._warn_happy_hare_active(gcmd)
+            return
         raw_mat = gcmd.get("MATERIAL", "").strip()
         is_match, canonical_req, reason = self.materials.matches(
             raw_mat, self.loaded_filament
