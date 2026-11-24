@@ -67,7 +67,6 @@ Dialogs use Klipper's native `action:prompt_*` commands, so they work in Mainsai
 
    ```bash
    cd ~/PrusaKLoad
-   chmod +x install.sh
    ./install.sh --copy-configs
    ```
 
