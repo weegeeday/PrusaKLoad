@@ -76,3 +76,29 @@ def test_missing_metadata_returns_none(tmp_path):
     assert parse_gcode_filament(str(gcode)) is None
     assert parse_gcode_filament(str(tmp_path / "missing.gcode")) is None
 
+
+def test_orcaslicer_header_filament_slot_id_does_not_shadow_tail_filament_type(tmp_path):
+    padding = ("G1 X10 Y10 E0.1 ; body\n" * 6000)
+    gcode = tmp_path / "orca_real.gcode"
+    gcode.write_text(
+        "; filament_density: 1.27\n"
+        "; filament_diameter: 1.75\n"
+        "; filament: 1\n"
+        "; material: 0\n"
+        + padding
+        + "; filament_type = PETG\n",
+        encoding="utf-8",
+    )
+    assert parse_gcode_filament(str(gcode)) == "PETG"
+
+
+def test_numeric_only_filament_and_material_headers_ignored(tmp_path):
+    gcode = tmp_path / "slot_only.gcode"
+    gcode.write_text(
+        "; filament: 1\n"
+        "; material: 2\n"
+        "G28\n",
+        encoding="utf-8",
+    )
+    assert parse_gcode_filament(str(gcode)) is None
+

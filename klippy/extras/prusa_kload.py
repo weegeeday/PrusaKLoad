@@ -34,10 +34,15 @@ DEFAULT_MATERIALS = (
     ("FLEX", 240.0, 240.0, ("TPE",)),
 )
 
-_FILAMENT_HEADER_RE = re.compile(
-    r"^\s*;\s*(?:filament_type|material_type|material\.name|filament|material)\s*[:=]\s*(.+?)\s*$",
+_PRIMARY_FILAMENT_HEADER_RE = re.compile(
+    r"^\s*;\s*(?:filament_type|material_type|material\.name)\s*[:=]\s*(.+?)\s*$",
     re.IGNORECASE,
 )
+_FALLBACK_FILAMENT_HEADER_RE = re.compile(
+    r"^\s*;\s*material\s*[:=]\s*(.+?)\s*$",
+    re.IGNORECASE,
+)
+_NUMERIC_ONLY_RE = re.compile(r"^\d+(?:\.\d+)?$")
 
 
 class MaterialProfile:
@@ -170,8 +175,12 @@ class MaterialRegistry:
         return False, canonical_req, "mismatch"
 
 
-def extract_gcode_filament_metadata(filepath, chunk_size=65536):
+def extract_gcode_filament_metadata(filepath, chunk_size=131072):
     """Read head and tail chunks of a G-code file to find slicer filament metadata.
+
+    Explicit material keys (``filament_type``, ``material_type``, ``material.name``)
+    are checked across both head and tail before generic ``material`` fallbacks, and
+    purely numeric values (such as slot counts/IDs) are ignored.
 
     Returns ``(raw_value, first_tool_material)`` or ``(None, None)``.
     """
@@ -191,22 +200,25 @@ def extract_gcode_filament_metadata(filepath, chunk_size=65536):
         logging.warning("prusa_kload: failed to read gcode '%s': %s", filepath, exc)
         return None, None
 
-    for chunk in (head_bytes, tail_bytes):
-        if not chunk:
-            continue
-        text = chunk.decode("utf-8", errors="ignore")
-        for line in text.splitlines():
-            match = _FILAMENT_HEADER_RE.match(line)
-            if not match:
-                continue
-            raw_val = match.group(1).strip()
-            first = extract_first_tool_material(raw_val)
-            if first:
-                return raw_val, first
+    chunks = [
+        chunk.decode("utf-8", errors="ignore").splitlines()
+        for chunk in (head_bytes, tail_bytes)
+        if chunk
+    ]
+    for pattern in (_PRIMARY_FILAMENT_HEADER_RE, _FALLBACK_FILAMENT_HEADER_RE):
+        for lines in chunks:
+            for line in lines:
+                match = pattern.match(line)
+                if not match:
+                    continue
+                raw_val = match.group(1).strip()
+                first = extract_first_tool_material(raw_val)
+                if first and not _NUMERIC_ONLY_RE.match(first):
+                    return raw_val, first
     return None, None
 
 
-def parse_gcode_filament(filepath, chunk_size=65536):
+def parse_gcode_filament(filepath, chunk_size=131072):
     """Return the first-tool filament material declared in a G-code file, or None."""
     _, first = extract_gcode_filament_metadata(filepath, chunk_size=chunk_size)
     return first
